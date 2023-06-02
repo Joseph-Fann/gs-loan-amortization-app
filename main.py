@@ -2,53 +2,21 @@ from decimal import Decimal, ROUND_DOWN
 from typing import List
 
 from fastapi import FastAPI
-from pydantic import BaseModel, Field
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import create_engine, Column, Integer, Numeric, Float, String, Table, ForeignKey
-from sqlalchemy.orm import sessionmaker, relationship
+from pydantic import BaseModel
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+
+from models import User, Loan, Base
+from schemas import User, UserCreate, LoanCreate, LoanSchedule, LoanSummary, LoanRecord
 
 app = FastAPI()
 
 engine = create_engine("sqlite:///database.db")
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
-loan_users = Table(
-    "loan_users",
-    Base.metadata,
-    Column("loan_id", Integer, ForeignKey("loans.id")),
-    Column("user_id", Integer, ForeignKey("users.id")),
-)
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    email = Column(String, unique=True, index=True)
-
-    loans = relationship("Loan", secondary=loan_users, back_populates="users")
-class Loan(Base):
-    __tablename__ = "loans"
-
-    id = Column(Integer, primary_key=True, index=True)
-    amount = Column(Numeric(precision=12, scale=2))
-    annual_interest_rate = Column(Numeric(precision=6, scale=4))
-    loan_term = Column(Integer)
-
-    users = relationship("User", secondary=loan_users, back_populates="loans")
 Base.metadata.create_all(bind=engine)
 
-class UserCreate(BaseModel):
-    username: str
-    email: str
-class LoanRecord(BaseModel):
-    amount: float
-    annual_interest_rate: Decimal
-    loan_term: int
-
-class LoanCreate(BaseModel):
-    loan_record: LoanRecord
-    user_ids: List[int]
 
 
 @app.post("/users")

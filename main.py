@@ -1,11 +1,11 @@
+from decimal import Decimal, ROUND_DOWN
 from typing import List
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import create_engine, Column, Integer, Float, String, Table, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, Numeric, Float, String, Table, ForeignKey
 from sqlalchemy.orm import sessionmaker, relationship
-
 
 app = FastAPI()
 
@@ -31,8 +31,8 @@ class Loan(Base):
     __tablename__ = "loans"
 
     id = Column(Integer, primary_key=True, index=True)
-    amount = Column(Float)
-    annual_interest_rate = Column(Float)
+    amount = Column(Numeric(precision=12, scale=2))
+    annual_interest_rate = Column(Numeric(precision=6, scale=4))
     loan_term = Column(Integer)
 
     users = relationship("User", secondary=loan_users, back_populates="loans")
@@ -43,7 +43,7 @@ class UserCreate(BaseModel):
     email: str
 class LoanRecord(BaseModel):
     amount: float
-    annual_interest_rate: float
+    annual_interest_rate: Decimal
     loan_term: int
 
 class LoanCreate(BaseModel):
@@ -64,7 +64,12 @@ async def create_user(user: UserCreate):
 async def create_loan(loan: LoanCreate):
     db = SessionLocal()
     users = db.query(User).filter(User.id.in_(loan.user_ids)).all()
+    
     loan_data = loan.loan_record.dict()
+    annual_interest_rate = loan_data["annual_interest_rate"]
+    loan_data["annual_interest_rate"] = Decimal(annual_interest_rate).quantize(
+        Decimal("0.0001"), rounding=ROUND_DOWN
+    )
     db_loan = Loan(users=users, **loan_data)
     db.add(db_loan)
     db.commit()
@@ -90,8 +95,8 @@ def calculate_loan_schedule(amount: float, interest_rate: float, loan_term: int)
         schedule.append(
             LoanSchedule(
                 month=month,
-                remaining_balance=remaining_balance,
-                monthly_payment=monthly_payment
+                remaining_balance=remaining_balance.quantize(Decimal("0.01"), rounding=ROUND_DOWN),
+                monthly_payment=monthly_payment.quantize(Decimal("0.01"), rounding=ROUND_DOWN),
             )
         )
 
@@ -134,9 +139,9 @@ async def get_loan_summary(loan_id: int, month_number: int):
         remaining_balance -= principal_payment
 
     loan_summary = LoanSummary(
-        current_principal_balance=remaining_balance,
-        aggregate_principal_paid=principal_paid,
-        aggregate_interest_paid=interest_paid
+        current_principal_balance=remaining_balance.quantize(Decimal("0.01"), rounding=ROUND_DOWN),
+        aggregate_principal_paid=principal_paid.quantize(Decimal("0.01"), rounding=ROUND_DOWN),
+        aggregate_interest_paid=interest_paid.quantize(Decimal("0.01"), rounding=ROUND_DOWN),
     )
 
     return loan_summary

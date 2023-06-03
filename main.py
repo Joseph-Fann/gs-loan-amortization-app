@@ -2,9 +2,9 @@ from decimal import Decimal, ROUND_HALF_DOWN
 from typing import List
 import os
 
-from fastapi import FastAPI,HTTPException
+from fastapi import Depends, FastAPI,HTTPException
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 
 
 from models import User, Loan, Base
@@ -17,51 +17,17 @@ if os.path.exists("database.db"):
 engine = create_engine("sqlite:///database.db")
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 Base.metadata.create_all(bind=engine)
 
-
-def _create_users(users_data):
-    db = SessionLocal()
-    users = []
-    for user_data in users_data:
-        user = User(name=user_data["name"], email=user_data["email"])
-        users.append(user)
-    db.add_all(users)
-    db.commit()
-    db.close()
-
-def _create_loans(loans_data):
-    db = SessionLocal()
-    loans = []
-
-    for loan_data in loans_data:
-        users = db.query(User).filter(User.id.in_(loan_data["users"])).all()
-        loan = Loan(amount=Decimal(loan_data["amount"]),
-                    annual_interest_rate=Decimal(loan_data["annual_interest_rate"]),
-                    loan_term=loan_data["loan_term"],
-                    users=users)
-        loans.append(loan)
-    db.add_all(loans)
-    db.commit()
-    db.close()
-
-users_data = [
-    {"name": "user1", "email": "user1@example.com"},
-    {"name": "user2", "email": "user2@example.com"}
-]
-
-loans_data = [
-    {"amount": 10000, "annual_interest_rate": 5, "loan_term": 12, "users": [1]},
-    {"amount": 20000, "annual_interest_rate": 6, "loan_term": 24, "users": [1,2]}
-]
-
-_create_users(users_data)
-_create_loans(loans_data)
-
-
 @app.post("/user")
-async def create_user(user: UserCreate):
-    db = SessionLocal()
+async def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db_user = User(name=user.name, email=user.email)
     db.add(db_user)
     db.commit()
@@ -69,8 +35,8 @@ async def create_user(user: UserCreate):
     return {"message": f"User {db_user.name} created successfully"}
 
 @app.post("/loan")
-async def create_loan(loan: LoanCreate):
-    db = SessionLocal()
+async def create_loan(loan: LoanCreate, db: Session = Depends(get_db)):
+    
     users = db.query(User).filter(User.id.in_(loan.user_ids)).all()
     
     loan_data = loan.loan_record.dict()
@@ -111,8 +77,8 @@ def calculate_loan_schedule(amount: Decimal, interest_rate: Decimal, loan_term: 
 
     return schedule
 @app.get("/loan/{loan_id}/schedule")
-async def get_loan_schedule(loan_id: int):
-    db = SessionLocal()
+async def get_loan_schedule(loan_id: int,db: Session = Depends(get_db)):
+    
     loan = db.query(Loan).filter(Loan.id == loan_id).first()
     if not loan:
         return {"message": "Loan not found"}
@@ -123,8 +89,8 @@ async def get_loan_schedule(loan_id: int):
 
 
 @app.get("/loan/{loan_id}/summary")
-async def get_loan_summary(loan_id: int, month_number: int):
-    db = SessionLocal()
+async def get_loan_summary(loan_id: int, month_number: int,db: Session = Depends(get_db)):
+    
     loan = db.query(Loan).filter(Loan.id == loan_id).first()
     if not loan:
         return {"message": "Loan not found"}
@@ -150,8 +116,8 @@ async def get_loan_summary(loan_id: int, month_number: int):
     return loan_summary
 
 @app.get("/user/{user_id}/loans")
-async def get_user_loans(user_id: int):
-    db = SessionLocal()
+async def get_user_loans(user_id: int,db: Session = Depends(get_db)):
+    
     user = db.query(User).get(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -160,8 +126,8 @@ async def get_user_loans(user_id: int):
 
 
 @app.post("/loan/{loan_id}/share")
-async def share_loan(loan_id: int, user_ids: List[int]):
-    db = SessionLocal()
+async def share_loan(loan_id: int, user_ids: List[int],db: Session = Depends(get_db)):
+    
     loan = db.query(Loan).filter(Loan.id == loan_id).first()
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")

@@ -13,11 +13,12 @@ loan_users = Table(
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
+    id = Column(Integer, primary_key=True, index=True,autoincrement=True)
+    name = Column(String, unique=False, index=True)
     email = Column(String, unique=True, index=True)
 
     loans = relationship("Loan", secondary=loan_users, back_populates="users")
+
 class Loan(Base):
     __tablename__ = "loans"
 

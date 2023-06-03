@@ -1,24 +1,19 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from decimal import Decimal
 from typing import List
 
-class UserBase(BaseModel):
-    username: str
-    email: str
+class BaseUser(BaseModel):
+    name: str
+    email: EmailStr
 
-class UserCreate(UserBase):
-    password: str
 
-class User(UserBase):
-    id: int
-
-    class Config:
-        orm_mode = True
+class UserCreate(BaseUser):
+    pass
 
 class LoanRecord(BaseModel):
-    amount: Decimal
-    annual_interest_rate: Decimal
-    loan_term: int
+    amount: Decimal = Field(ge=1, decimal_places=2,  description="Loan amount (positive)")
+    annual_interest_rate: Decimal = Field(gt=0, decimal_places=4, description="Annual interest rate")
+    loan_term: int = Field(gt=0, description="Loan term in months")
 
 class LoanCreate(BaseModel):
     loan_record: LoanRecord

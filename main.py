@@ -1,4 +1,4 @@
-from decimal import Decimal, ROUND_HALF_DOWN
+from decimal import Decimal, ROUND_HALF_UP
 from typing import List
 import os
 
@@ -42,7 +42,7 @@ async def create_loan(loan: LoanCreate, db: Session = Depends(get_db)):
     loan_data = loan.loan_record.dict()
     annual_interest_rate = loan_data["annual_interest_rate"]
     loan_data["annual_interest_rate"] = Decimal(annual_interest_rate).quantize(
-        Decimal("0.0001"), rounding=ROUND_HALF_DOWN
+        Decimal("0.0001"), rounding=ROUND_HALF_UP
     )
     db_loan = Loan(users=users, **loan_data)
     db.add(db_loan)
@@ -55,7 +55,7 @@ def calculate_monthly_payment(amount: Decimal, interest_rate: Decimal, loan_term
     monthly_interest_rate = interest_rate / Decimal(12 * 100)
     denominator = (1 - (1 + monthly_interest_rate) ** -loan_term)
     monthly_payment = (amount * monthly_interest_rate) / denominator
-    return monthly_payment.quantize(Decimal("0.01"), rounding=ROUND_HALF_DOWN)
+    return monthly_payment.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 def calculate_loan_schedule(amount: Decimal, interest_rate: Decimal, loan_term: int) -> List[LoanSchedule]:
     schedule = []
@@ -70,22 +70,42 @@ def calculate_loan_schedule(amount: Decimal, interest_rate: Decimal, loan_term: 
 
         loan_schedule = LoanSchedule(
             month=month,
-            remaining_balance=remaining_balance.quantize(Decimal("0.01"), rounding=ROUND_HALF_DOWN),
-            monthly_payment=monthly_payment.quantize(Decimal("0.01"), rounding=ROUND_HALF_DOWN),
+            remaining_balance=remaining_balance.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            monthly_payment=monthly_payment.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
         )
         schedule.append(loan_schedule)
 
     return schedule
+
+
+
 @app.get("/loan/{loan_id}/schedule")
 async def get_loan_schedule(loan_id: int,db: Session = Depends(get_db)):
     
     loan = db.query(Loan).filter(Loan.id == loan_id).first()
-    if not loan:
-        return {"message": "Loan not found"}
 
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
     schedule = calculate_loan_schedule(loan.amount, loan.annual_interest_rate, loan.loan_term)
 
     return schedule
+
+
+def calculate_loan_summary(amount:Decimal, month_number: int, schedule: List[LoanSchedule]) -> LoanSummary:
+    
+    current_principal_balance = schedule[month_number - 1].remaining_balance
+    total_paid = schedule[0].monthly_payment * month_number
+
+    principal_paid = amount - current_principal_balance
+    interest_paid = total_paid - principal_paid
+
+    loan_summary = LoanSummary(
+        current_principal_balance=current_principal_balance,
+        aggregate_principal_paid=principal_paid.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        aggregate_interest_paid=interest_paid.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+    )
+
+    return loan_summary
 
 
 @app.get("/loan/{loan_id}/summary")
@@ -93,24 +113,14 @@ async def get_loan_summary(loan_id: int, month_number: int,db: Session = Depends
     
     loan = db.query(Loan).filter(Loan.id == loan_id).first()
     if not loan:
-        return {"message": "Loan not found"}
+        raise HTTPException(status_code=404, detail="Loan not found")
 
     schedule = calculate_loan_schedule(loan.amount, loan.annual_interest_rate, loan.loan_term)
 
-    principal_paid = Decimal(0.0)
-    interest_paid = Decimal(0.0)
-    remaining_balance = loan.amount
-    for month in range(1, month_number + 1):
-        interest_payment = schedule[month - 1].monthly_payment - (remaining_balance * loan.annual_interest_rate / Decimal(12) / Decimal(100))
-        principal_payment = schedule[month - 1].monthly_payment - interest_payment
-        principal_paid += principal_payment
-        interest_paid += interest_payment
-        remaining_balance -= principal_payment
-
-    loan_summary = LoanSummary(
-        current_principal_balance=remaining_balance.quantize(Decimal("0.01"), rounding=ROUND_HALF_DOWN),
-        aggregate_principal_paid=principal_paid.quantize(Decimal("0.01"), rounding=ROUND_HALF_DOWN),
-        aggregate_interest_paid=interest_paid.quantize(Decimal("0.01"), rounding=ROUND_HALF_DOWN),
+    loan_summary = calculate_loan_summary(
+        amount=loan.amount,
+        month_number=month_number,
+        schedule=schedule
     )
 
     return loan_summary

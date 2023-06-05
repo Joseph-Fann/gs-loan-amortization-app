@@ -1,5 +1,5 @@
-from sqlalchemy import Column, Integer, Numeric, String, Table, ForeignKey
-from sqlalchemy.orm import relationship,declarative_base
+from sqlalchemy import Column, ForeignKey, Integer, Numeric, String, Table
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
@@ -9,6 +9,8 @@ loan_users = Table(
     Column("loan_id", Integer, ForeignKey("loans.id")),
     Column("user_id", Integer, ForeignKey("users.id")),
 )
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -17,6 +19,7 @@ class User(Base):
     email = Column(String, unique=False, index=True)
 
     loans = relationship("Loan", secondary=loan_users, back_populates="users")
+
 
 class Loan(Base):
     __tablename__ = "loans"
